@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kasir Biliard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container { max-width: 1200px; }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .card:hover { transform: scale(1.05); }
+        .tersedia { background: linear-gradient(45deg, #56ab2f, #a8e6cf); }
+        .digunakan { background: linear-gradient(45deg, #ff416c, #ff4b2b); }
+        .btn-custom { border-radius: 25px; font-weight: bold; }
+        #struk {
+            display: none;
+            font-family: 'Courier New', monospace;
+            width: 300px;
+            margin: 0 auto;
+            border: 2px dashed #000;
+            padding: 20px;
+            background: white;
+            color: black;
+            border-radius: 10px;
+        }
+        @media print {
+            body * { visibility: hidden; }
+            #struk, #struk * { visibility: visible; }
+            #struk { position: absolute; left: 0; top: 0; }
+        }
+        .total-section { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 15px; margin-bottom: 20px; }
+        .timer { color: yellow; font-weight: bold; }
+        .pesanan-list { font-size: 0.9em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4"><i class="bi bi-circle-square"></i> Kasir Biliard</h1>
+        
+        <div class="total-section text-center">
+            <h2>Total Pendapatan Hari Ini: Rp <span id="total" class="fw-bold">0</span></h2>
+            <button class="btn btn-warning btn-custom" onclick="resetHari()">Reset Hari</button>
+        </div>
+        
+        <div class="row" id="meja-container">
+            <!-- Meja akan ditambahkan secara dinamis -->
+        </div>
+    </div>
+
+    <!-- Elemen struk untuk cetak -->
+    <div id="struk">
+        <h3 class="text-center">Struk Pembayaran Biliard</h3>
+        <hr>
+        <p><strong>Nama Tempat:</strong> Biliard Fun</p>
+        <p><strong>Tanggal:</strong> <span id="struk-tanggal"></span></p>
+        <p><strong>Meja:</strong> <span id="struk-meja"></span></p>
+        <p><strong>Jenis:</strong> <span id="struk-jenis"></span></p>
+        <p><strong>Waktu Bermain:</strong> <span id="struk-waktu"></span> jam</p>
+        <p><strong>Tarif Sewa:</strong> Rp <span id="struk-tarif"></span></p>
+        <p><strong>Biaya Sewa:</strong> Rp <span id="struk-biaya-sewa"></span></p>
+        <p><strong>Pesanan Tambahan:</strong></p>
+        <div id="struk-pesanan"></div>
+        <p><strong>Biaya Pesanan:</strong> Rp <span id="struk-biaya-pesanan"></span></p>
+        <hr>
+        <p class="text-center fw-bold">Total Dibayar: Rp <span id="struk-total"></span></p>
+        <p class="text-center">Terima Kasih! <i class="bi bi-heart-fill"></i></p>
+        <p class="text-center small">Pembayaran telah selesai.</p>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let mejaList = [];
+        let totalPendapatan = 0;
+        let timers = {}; // Untuk menyimpan timer mundur
+
+        // Menu makanan dan minuman
+        const menu = [
+            { nama: 'Mie Goreng', harga: 15000 },
+            { nama: 'Nasi Goreng', harga: 20000 },
+            { nama: 'Ayam Bakar', harga: 25000 },
+            { nama: 'Jus Jeruk', harga: 10000 },
+            { nama: 'Es Teh', harga: 8000 },
+            { nama: 'Kopi', harga: 12000 }
+        ];
+
+        // Fungsi untuk mendapatkan tarif per jam berdasarkan meja
+        function getTarifPerJam(id) {
+            if (id <= 3) return 30000; // Meja 1-3: Rp 30.000
+            return 40000; // Meja 4-6: Rp 40.000
+        }
+
+        // Fungsi untuk mendapatkan harga paket happy berdasarkan meja
+        function getPaketHappy(id) {
+            if (id <= 3) return 50000; // Meja 1-3: Rp 50.000
+            return 70000; // Meja 4-6: Rp 70.000
+        }
+
+        // Inisialisasi meja (misal 6 meja)
+        for (let i = 1; i <= 6; i++) {
+            mejaList.push({ id: i, status: 'tersedia', waktuMulai: null, waktuSewa: 0, biayaSewa: 0, biayaPesanan: 0, pesanan: [], jenis: '' });
+        }
+
+        function renderMeja() {
+            const container = document.getElementById('meja-container');
+            container.innerHTML = '';
+            mejaList.forEach(meja => {
+                const col = document.createElement('div');
+                col.className = 'col-md-4 col-sm-6 mb-4';
+                let pesananHtml = '';
+                if (meja.pesanan.length > 0) {
+                    pesananHtml = '<p class="pesanan-list"><strong>Pesanan:</strong><br>' + meja.pesanan.map(p => `${p.nama} - Rp ${p.harga}`).join('<br>') + '</p>';
+                }
+                col.innerHTML = `
+                    <div class="card ${meja.status} text-white">
+                        <div class="card-body text-center">
+                            <h5 class="card-title"><i class="bi bi-table"></i> Meja ${meja.id}</h5>
+                            <p class="card-text">Status: ${meja.status === 'tersedia' ? 'Tersedia' : 'Digunakan'}</p>
+                            ${meja.status === 'digunakan' ? `<p class="timer">Sisa Waktu: <span id="timer-${meja.id}">--:--</span></p>` : ''}
+                            <p>Biaya Sewa: Rp ${meja.biayaSewa.toFixed(0)}</p>
+                            <p>Biaya Pesanan: Rp ${meja.biayaPesanan.toFixed(0)}</p>
+                            <p>Total: Rp ${(meja.biayaSewa + meja.biayaPesanan).toFixed(0)}</p>
+                            ${pesananHtml}
+                            ${meja.status === 'tersedia' ? `
+                                <select id="sewa-${meja.id}" class="form-select mb-2">
+                                    <option value="0">Pilih Opsi</option>
+                                    <option value="1">1 Jam (Rp ${getTarifPerJam(meja.id).toLocaleString()})</option>
+                                    <option value="2">2 Jam (Rp ${(getTarifPerJam(meja.id) * 2).toLocaleString()})</option>
+                                    <option value="3">3 Jam (Rp ${(getTarifPerJam(meja.id) * 3).toLocaleString()})</option>
+                                    <option value="4">4 Jam (Rp ${(getTarifPerJam(meja.id) * 4).toLocaleString()})</option>
+                                    <option value="happy">Paket Happy (Rp ${getPaketHappy(meja.id).toLocaleString()})</option>
+                                </select>
+                                <p>Biaya Estimasi: Rp <span id="estimasi-${meja.id}">0</span></p>
+                                <button class="btn btn-light btn-custom me-2" onclick="sewaMeja(${meja.id})">Sewa Sekarang</button>
+                            ` : `
+                                <select id="menu-${meja.id}" class="form-select mb-2">
+                                    <option value="">Pilih Menu</option>
+                                    ${menu.map(item => `<option value="${item.nama}" data-harga="${item.harga}">${item.nama} - Rp ${item.harga.toLocaleString()}</option>`).join('')}
+                                </select>
+                                <button class="btn btn-info btn-custom" onclick="tambahPesanan(${meja.id})">Tambah Pesanan</button>
+                            `}
+                            <button class="btn btn-success btn-custom" onclick="mulaiMeja(${meja.id})" ${meja.status === 'digunakan' ? '' : 'disabled'}>Mulai Timer</button>
+                            <button class="btn btn-dark btn-custom" onclick="stopMeja(${meja.id})" ${meja.status === 'tersedia' ? 'disabled' : ''}>Stop & Bayar</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+                
+                // Event listener untuk dropdown estimasi
+                const select = col.querySelector(`#sewa-${meja.id}`);
+                if (select) {
+                    select.addEventListener('change', () => {
+                        const value = select.value;
+                        let estimasi = 0;
+                        if (value === 'happy') {
+                            estimasi = getPaketHappy(meja.id);
+                        } else if (value > 0) {
+                            estimasi = parseInt(value) * getTarifPerJam(meja.id);
+                        }
+                        col.querySelector(`#estimasi-${meja.id}`).textContent = estimasi.toLocaleString();
+                    });
+                }
+            });
+            document.getElementById('total').textContent = totalPendapatan.toFixed(0);
+        }
+
+        function sewaMeja(id) {
+            const select = document.getElementById(`sewa-${id}`);
+            const value = select.value;
+            if (value !== '0') {
+                const meja = mejaList.find(m => m.id === id);
+                meja.status = 'digunakan';
+                if (value === 'happy') {
+                    meja.jenis = 'Paket Happy';
+                    meja.biayaSewa = getPaketHappy(id);
+                    meja.waktuSewa = 60 * 60 * 1000; // 1 jam untuk paket happy
+                } else {
+                    meja.jenis = 'Per Jam';
+                    const jam = parseInt(value);
+                    meja.waktuSewa = jam * 60 * 60 * 1000;
+                    meja.biayaSewa = jam * getTarifPerJam(id);
+                }
+                meja.waktuMulai = Date.now();
+                totalPendapatan += meja.biayaSewa;
+                
+                // Isi struk dan cetak
+                isiDanCetakStruk(meja);
+                
+                // Mulai timer mundur
+                startTimer(id);
+                renderMeja();
+            } else {
+                alert('Pilih opsi sewa terlebih dahulu!');
+            }
+        }
+
+        function tambahPesanan(id) {
+            const select = document.getElementById(`menu-${id}`);
+            const selectedOption = select.options[select.selectedIndex];
+            if (selectedOption.value) {
+                const nama = selectedOption.value;
+                const harga = parseInt(selectedOption.getAttribute('data-harga'));
+                const meja = mejaList.find(m => m.id === id);
+                meja.pesanan.push({ nama, harga });
+                meja.biayaPesanan += harga;
+                totalPendapatan += harga;
+                select.value = '';
+                renderMeja();
+            } else {
+                alert('Pilih menu terlebih dahulu!');
+            }
+        }
+
+        function mulaiMeja(id) {
+            const meja = mejaList.find(m => m.id === id);
+            if (meja.status === 'digunakan' && !meja.waktuMulai) {
+                meja.waktuMulai = Date.now();
+                startTimer(id);
+                renderMeja();
+            }
+        }
+
+        function stopMeja(id) {
+            const meja = mejaList.find(m => m.id === id);
+            if (meja.status === 'digunakan') {
+                clearInterval(timers[id]);
+                // Jika timer manual dan bukan paket happy, hitung biaya berdasarkan waktu
+                if (meja.jenis !== 'Paket Happy' && meja.waktuSewa === 0) {
+                    const waktu = Math.floor((Date.now() - meja.waktuMulai) / 60000);
+                    meja.biayaSewa = (waktu / 60) * getTarifPerJam(id);
+                    totalPendapatan += meja.biayaSewa;
+                }
+                
+                // Isi struk dan cetak
+                isiDanCetakStruk(meja);
+                
+                // Reset meja
+                meja.status = 'tersedia';
+                meja.waktuMulai = null;
+                meja.waktuSewa = 0;
+                meja.biayaSewa = 0;
+                meja.biayaPesanan = 0;
+                meja.pesanan = [];
+                meja.jenis = '';
+                renderMeja();
+            }
+        }
+
+        function isiDanCetakStruk(meja) {
+            const jam = meja.waktuSewa > 0 ? (meja.waktuSewa / (60 * 60 * 1000)) : Math.floor((Date.now() - meja.waktuMulai) / 60000 / 60);
+            document.getElementById('struk-tanggal').textContent = new Date().toLocaleString();
+            document.getElementById('struk-meja').textContent = meja.id;
+            document.getElementById('struk-jenis').textContent = meja.jenis || 'Per Jam';
+            document.getElementById('struk-waktu').textContent = jam;
+            document.getElementById('struk-tarif').textContent = meja.jenis === 'Paket Happy' ? getPaketHappy(meja.id).toLocaleString() : getTarifPerJam(meja.id).toLocaleString();
+            document.getElementById('struk-biaya-sewa').textContent = meja.biayaSewa.toFixed(0);
+            const pesananHtml = meja.pesanan.map(p => `<p>${p.nama} - Rp ${p.harga}</p>`).join('');
+            document.getElementById('struk-pesanan').innerHTML = pesananHtml || '<p>Tidak ada</p>';
+            document.getElementById('struk-biaya-pesanan').textContent = meja.biayaPesanan.toFixed(0);
+            document.getElementById('struk-total').textContent = (meja.biayaSewa + meja.biayaPesanan).toFixed(0);
+            window.print();
+        }
+
+        function startTimer(id) {
+            const meja = mejaList.find(m => m.id === id);
+            timers[id] = setInterval(() => {
+                const sisa = meja.waktuSewa - (Date.now() - meja.waktuMulai);
+                if (sisa <= 0) {
+                    clearInterval(timers[id]);
+                    stopMeja(id); // Auto stop dan cetak struk saat waktu habis
+                } else {
+                    const menit = Math.floor(sisa / 60000);
+                    const detik = Math.floor((sisa % 60000) / 1000);
+                    document.getElementById(`timer-${id}`).textContent = `${menit}:${detik.toString().padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+
+        function resetHari() {
+            totalPendapatan = 0;
+            Object.values(timers).forEach(clearInterval);
+            timers = {};
+            mejaList.forEach(meja => {
+                meja.status = 'tersedia';
+                meja.waktuMulai = null;
+                meja.waktuSewa = 0;
+                meja.biayaSewa = 0;
+                meja.biayaPesanan = 0;
+                meja.pesanan = [];
+                meja.jenis = '';
+            });
+            renderMeja();
+        }
+
+        renderMeja();
+    </script>
+</body>
+</html>
